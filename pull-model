@@ -1,0 +1,150 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+pull-model — Simple, fast, mirror-friendly Hugging Face downloader.
+
+Usage:
+  pull-model <repo_id> [--revision <rev>] [--local-dir <path>] [--cache-dir <path>]
+             [--include "<p1> <p2>"] [--exclude "<p>"] [--token <HF_TOKEN>]
+             [--repo-type model|dataset]
+
+Manage default dir:
+  pull-model --set-default-dir <PATH>
+  pull-model --show-default
+  pull-model --clear-default
+
+Notes:
+  - If --local-dir is omitted, we use "default_dir + basename(repo_id)".
+  - Default dir persists at: ~/.config/pull-model/config
+EOF
+}
+
+# ----- config helpers -----
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/pull-model"
+CONFIG_FILE="$CONFIG_DIR/config"
+get_default_dir() {
+  if [[ -f "$CONFIG_FILE" ]]; then
+    # shellcheck disable=SC1090
+    . "$CONFIG_FILE"
+    [[ -n "${BASE_DIR:-}" ]] && printf '%s\n' "$BASE_DIR" && return 0
+  fi
+  return 1
+}
+set_default_dir() {
+  mkdir -p "$CONFIG_DIR"
+  printf 'BASE_DIR=%q\n' "$1" > "$CONFIG_FILE"
+  echo "[OK] Default dir set to: $1"
+}
+clear_default_dir() {
+  rm -f "$CONFIG_FILE" && echo "[OK] Default dir cleared." || true
+}
+
+# ----- mgmt mode -----
+if [[ $# -ge 1 ]]; then
+  case "$1" in
+    --set-default-dir)
+      [[ $# -ge 2 ]] || { echo "[ERR] missing PATH"; exit 2; }
+      set_default_dir "$2"; exit 0;;
+    --show-default)
+      if get_default_dir >/dev/null; then
+        echo "[INFO] Default dir: $(get_default_dir)"
+      else
+        echo "[INFO] No default dir configured."
+      fi
+      exit 0;;
+    --clear-default)
+      clear_default_dir; exit 0;;
+    -h|--help)
+      usage; exit 0;;
+  esac
+fi
+
+# ----- normal downloading -----
+if [[ $# -lt 1 ]]; then usage; exit 1; fi
+
+REVISION=""; LOCAL_DIR=""; CACHE_DIR=""; INCLUDE=(); EXCLUDE=(); TOKEN=""; REPO_TYPE="model"
+REPO_ID="$1"; shift || true
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --revision) REVISION="${2:?}"; shift 2;;
+    --local-dir) LOCAL_DIR="${2:?}"; shift 2;;
+    --cache-dir) CACHE_DIR="${2:?}"; shift 2;;
+    --include) shift; while [[ $# -gt 0 && "$1" != --* ]]; do INCLUDE+=("$1"); shift; done ;;
+    --exclude) shift; while [[ $# -gt 0 && "$1" != --* ]]; do EXCLUDE+=("$1"); shift; done ;;
+    --token) TOKEN="${2:?}"; shift 2;;
+    --repo-type) REPO_TYPE="${2:?}"; shift 2;;
+    -h|--help) usage; exit 0;;
+    *) echo "[ERR] Unknown arg: $1"; echo; usage; exit 2;;
+  esac
+done
+
+if ! command -v huggingface-cli >/dev/null 2>&1; then
+  echo "[ERR] huggingface-cli not found. Install: pip install -U huggingface_hub hf_transfer"
+  exit 3
+fi
+
+# choose subcmd
+HF_SUBCMD=""
+if huggingface-cli download -h >/dev/null 2>&1; then
+  HF_SUBCMD="download"
+elif huggingface-cli snapshot-download -h >/dev/null 2>&1; then
+  HF_SUBCMD="snapshot-download"
+fi
+
+# env defaults
+: "${HF_ENDPOINT:=https://hf-mirror.com}"
+: "${HF_HUB_ENABLE_HF_TRANSFER:=1}"
+: "${HF_HOME:=$HOME/.cache/huggingface}"
+
+# resolve default local-dir if not provided
+if [[ -z "$LOCAL_DIR" ]]; then
+  if BASE_DIR_VAL="$(get_default_dir 2>/dev/null)"; then
+    LOCAL_DIR="${BASE_DIR_VAL}/$(basename "$REPO_ID")"
+  else
+    LOCAL_DIR="$PWD/$(basename "$REPO_ID")"
+  fi
+fi
+
+if [[ -n "$TOKEN" ]]; then export HF_TOKEN="$TOKEN"; fi
+mkdir -p "$LOCAL_DIR"; [[ -n "$CACHE_DIR" ]] && mkdir -p "$CACHE_DIR"
+
+echo "[INFO] HF_ENDPOINT=${HF_ENDPOINT}"
+echo "[INFO] repo: $REPO_ID"
+echo "[INFO] local-dir: $LOCAL_DIR"
+[[ -n "$REVISION" ]] && echo "[INFO] revision: $REVISION"
+
+if [[ -n "$HF_SUBCMD" ]]; then
+  CMD=(huggingface-cli "$HF_SUBCMD" "$REPO_ID" --repo-type "$REPO_TYPE" --local-dir "$LOCAL_DIR" --local-dir-use-symlinks False)
+  [[ -n "$CACHE_DIR" ]] && CMD+=(--cache-dir "$CACHE_DIR")
+  [[ -n "$REVISION" ]] && CMD+=(--revision "$REVISION")
+  for pat in "${INCLUDE[@]}"; do CMD+=(--include "$pat"); done
+  for pat in "${EXCLUDE[@]}"; do CMD+=(--exclude "$pat"); done
+  echo "[INFO] method: huggingface-cli $HF_SUBCMD"
+  "${CMD[@]}"
+else
+  echo "[WARN] CLI lacks 'download'/'snapshot-download'. Falling back to Python API."
+  python - <<PY
+import os
+from huggingface_hub import snapshot_download
+repo_id = "${REPO_ID}"
+kwargs = dict(repo_type="${REPO_TYPE}", local_dir="${LOCAL_DIR}", local_dir_use_symlinks=False)
+rev = "${REVISION}"
+if rev: kwargs["revision"] = rev
+cache_dir = "${CACHE_DIR}"
+if cache_dir: kwargs["cache_dir"] = cache_dir
+inc = ${INCLUDE!r}
+exc = ${EXCLUDE!r}
+if inc: kwargs["allow_patterns"] = inc
+if exc: kwargs["ignore_patterns"] = exc
+tok = os.environ.get("HF_TOKEN")
+if tok: kwargs["token"] = tok
+print("[INFO] method: python snapshot_download")
+snapshot_download(repo_id, **kwargs)
+print("[OK] Done.")
+PY
+fi
+
+echo "[OK] Done."
