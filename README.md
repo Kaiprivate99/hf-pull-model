@@ -4,7 +4,6 @@
 A tiny, mirror-friendly wrapper around `huggingface-cli` to download large models/datasets reliably in mainland networks.  
 **No sudo required.** Supports **default directory** management and partial file selection.
 
-> 中文为主 / English brief below.
 
 ## ✨ Features
 - 一条命令：`pull-model <repo>`（默认下到你设置的目录）
