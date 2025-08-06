@@ -124,7 +124,3 @@ pip install -U "huggingface_hub>=0.24.0"
 pull-model --set-default-dir ~/models
 ```
 
-## **🔐 Security**
-
-- 需要 token 时可用 --token，或 huggingface-cli login。
-- 避免把个人 HF_TOKEN 写进公开脚本/README。
