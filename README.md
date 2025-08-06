@@ -124,3 +124,11 @@ pip install -U "huggingface_hub>=0.24.0"
 pull-model --set-default-dir ~/models
 ```
 
+**镜像读超时？**
+
+读超时默认10秒，已下好的分片都在缓存里，重新执行会断点续传，可以提高超时解决：
+
+```
+export HF_HUB_READ_TIMEOUT=60
+```
+
