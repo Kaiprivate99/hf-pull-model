@@ -20,9 +20,11 @@ A tiny, mirror-friendly wrapper around `huggingface-cli` to download large model
 
 ## ⚡ Install
 
+```bash
 git clone https://github.com/<yourname>/hf-pull-model.git
 cd hf-pull-model
 bash install.sh
+
 
 （可选）写入加速环境变量（放到 ~/.bashrc 或 ~/.zshrc）：
 
