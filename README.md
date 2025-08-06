@@ -23,7 +23,7 @@ A tiny, mirror-friendly wrapper around `huggingface-cli` to download large model
 ## **⚡ Install**
 
 ```
-git clone https://github.com/<yourname>/hf-pull-model.git
+git clone https://github.com/Kaiprivate99/hf-pull-model.git
 cd hf-pull-model
 bash install.sh
 ```
