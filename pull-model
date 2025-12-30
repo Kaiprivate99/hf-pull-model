@@ -81,16 +81,21 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if ! command -v huggingface-cli >/dev/null 2>&1; then
-  echo "[ERR] huggingface-cli not found. Install: pip install -U huggingface_hub hf_transfer"
+HF_CLI_CMD=""
+if command -v huggingface-cli >/dev/null 2>&1; then
+  HF_CLI_CMD="huggingface-cli"
+elif command -v hf >/dev/null 2>&1; then
+  HF_CLI_CMD="hf"
+else
+  echo "[ERR] huggingface-cli (or hf) not found. Install: pip install -U huggingface_hub hf_transfer"
   exit 3
 fi
 
 # choose subcmd
 HF_SUBCMD=""
-if huggingface-cli download -h >/dev/null 2>&1; then
+if "$HF_CLI_CMD" download --help >/dev/null 2>&1; then
   HF_SUBCMD="download"
-elif huggingface-cli snapshot-download -h >/dev/null 2>&1; then
+elif "$HF_CLI_CMD" snapshot-download --help >/dev/null 2>&1; then
   HF_SUBCMD="snapshot-download"
 fi
 
@@ -117,12 +122,15 @@ echo "[INFO] local-dir: $LOCAL_DIR"
 [[ -n "$REVISION" ]] && echo "[INFO] revision: $REVISION"
 
 if [[ -n "$HF_SUBCMD" ]]; then
-  CMD=(huggingface-cli "$HF_SUBCMD" "$REPO_ID" --repo-type "$REPO_TYPE" --local-dir "$LOCAL_DIR" --local-dir-use-symlinks False)
+  CMD=("$HF_CLI_CMD" "$HF_SUBCMD" "$REPO_ID" --repo-type "$REPO_TYPE" --local-dir "$LOCAL_DIR")
+  if "$HF_CLI_CMD" "$HF_SUBCMD" --help 2>&1 | grep -q -- "--local-dir-use-symlinks"; then
+    CMD+=(--local-dir-use-symlinks False)
+  fi
   [[ -n "$CACHE_DIR" ]] && CMD+=(--cache-dir "$CACHE_DIR")
   [[ -n "$REVISION" ]] && CMD+=(--revision "$REVISION")
   for pat in "${INCLUDE[@]}"; do CMD+=(--include "$pat"); done
   for pat in "${EXCLUDE[@]}"; do CMD+=(--exclude "$pat"); done
-  echo "[INFO] method: huggingface-cli $HF_SUBCMD"
+  echo "[INFO] method: $HF_CLI_CMD $HF_SUBCMD"
   "${CMD[@]}"
 else
   echo "[WARN] CLI lacks 'download'/'snapshot-download'. Falling back to Python API."
