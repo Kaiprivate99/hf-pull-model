@@ -49,7 +49,8 @@ pull-model --set-default-dir ~/models
 日常拉取（无需写路径）：
 
 ```
-pull-model Qwen/Qwen2.5-7B-Instruct
+pull-model Qwen/Qwen2.5-7B-Instruct # 下载模型
+pull-model xxx/xxx --repo-type dataset # 下载数据集
 ```
 
 指定分支/标签：
